@@ -70,7 +70,7 @@ func makeSellSideStrategy(
 // PruneExistingOffers impl
 func (s *sellSideStrategy) PruneExistingOffers(offers []hProtocol.Offer) ([]build.TransactionMutator, []hProtocol.Offer) {
 	// figure out which offers we want to prune
-	shouldPrune := computeOffersToPrune(offers, s.desiredLevels)
+	shouldPrune := computeOffersToPrune(offers, s.desiredLevels, s.priceTolerance)
 
 	pruneOps := []txnbuild.Operation{}
 	updatedOffers := []hProtocol.Offer{}
@@ -96,38 +96,42 @@ func (s *sellSideStrategy) PruneExistingOffers(offers []hProtocol.Offer) ([]buil
 }
 
 // computeOffersToPrune returns a list of bools representing whether we should prune the offer at that position or not
-func computeOffersToPrune(offers []hProtocol.Offer, levels []api.Level) []bool {
-	numToPrune := len(offers) - len(levels)
-	if numToPrune <= 0 {
-		return make([]bool, len(offers))
-	}
-
+func computeOffersToPrune(offers []hProtocol.Offer, levels []api.Level, priceTolerance float64) []bool {
+	shouldPrune := make([]bool, len(offers))
 	offerIdx := 0
 	levelIdx := 0
-	shouldPrune := make([]bool, len(offers))
-	for numToPrune > 0 {
-		if offerIdx == len(offers) || levelIdx == len(levels) {
-			// prune remaining offers (from the back as a convention)
-			for i := 0; i < numToPrune; i++ {
-				shouldPrune[len(offers)-1-i] = true
-			}
-			return shouldPrune
-		}
 
+	for offerIdx < len(offers) && levelIdx < len(levels) {
 		offerPrice := float64(offers[offerIdx].PriceR.N) / float64(offers[offerIdx].PriceR.D)
 		levelPrice := levels[levelIdx].Price.AsFloat()
-		if offerPrice < levelPrice {
-			shouldPrune[offerIdx] = true
-			numToPrune--
-			offerIdx++
-		} else if offerPrice == levelPrice {
+
+		diff := offerPrice - levelPrice
+		if diff < 0 {
+			diff = -diff
+		}
+		toleranceAmount := 0.0
+		if levelPrice > 0 {
+			toleranceAmount = levelPrice * priceTolerance
+		}
+
+		if diff <= toleranceAmount {
 			shouldPrune[offerIdx] = false
 			offerIdx++
-			// do not increment levelIdx because we could have two offers or levels at the same price. This will resolve in the next iteration automatically.
+			// increment levelIdx to ensure 1-to-1 mapping of offers to levels
+			levelIdx++
+		} else if offerPrice < levelPrice {
+			shouldPrune[offerIdx] = true
+			offerIdx++
 		} else {
 			levelIdx++
 		}
 	}
+
+	// prune remaining offers
+	for i := offerIdx; i < len(offers); i++ {
+		shouldPrune[i] = true
+	}
+
 	return shouldPrune
 }
 

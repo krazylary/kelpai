@@ -14,6 +14,7 @@ func TestComputeOffersToPrune(t *testing.T) {
 	testCases := []struct {
 		offerPrices []float64
 		levelPrices []float64
+		tolerance   float64
 		want        []bool
 	}{
 		{
@@ -35,7 +36,7 @@ func TestComputeOffersToPrune(t *testing.T) {
 		}, {
 			offerPrices: []float64{0.9},
 			levelPrices: []float64{1.0, 1.2},
-			want:        []bool{false},
+			want:        []bool{true},
 		}, {
 			offerPrices: []float64{1.0, 1.2},
 			levelPrices: []float64{1.0},
@@ -47,11 +48,11 @@ func TestComputeOffersToPrune(t *testing.T) {
 		}, {
 			offerPrices: []float64{10.0, 11.0},
 			levelPrices: []float64{1.0},
-			want:        []bool{false, true},
+			want:        []bool{true, true},
 		}, {
 			offerPrices: []float64{0.9, 1.2},
 			levelPrices: []float64{1.0},
-			want:        []bool{true, false},
+			want:        []bool{true, true},
 		}, {
 			offerPrices: []float64{1.0, 1.0},
 			levelPrices: []float64{1.0},
@@ -76,6 +77,20 @@ func TestComputeOffersToPrune(t *testing.T) {
 			offerPrices: []float64{1.0},
 			levelPrices: []float64{1.0, 1.2},
 			want:        []bool{false},
+		}, {
+			offerPrices: []float64{100.0},
+			levelPrices: []float64{110.0},
+			want:        []bool{true},
+		}, {
+			offerPrices: []float64{100.05},
+			levelPrices: []float64{100.0},
+			tolerance:   0.001,
+			want:        []bool{false},
+		}, {
+			offerPrices: []float64{100.2},
+			levelPrices: []float64{100.0},
+			tolerance:   0.001,
+			want:        []bool{true},
 		},
 	}
 
@@ -105,7 +120,7 @@ func TestComputeOffersToPrune(t *testing.T) {
 				})
 			}
 
-			result := computeOffersToPrune(offers, levels)
+			result := computeOffersToPrune(offers, levels, kase.tolerance)
 			assert.Equal(t, kase.want, result)
 		})
 	}
