@@ -289,12 +289,13 @@ func init() {
 			}
 		}
 
+		var metricsTracker *metrics.MetricsTracker
 		if isLocalDevMode {
 			log.Printf("not sending data metrics in dev mode")
 		} else {
 			userID := "-1" // TODO DS Properly generate and save user ID.
 			httpClient := &http.Client{}
-			metricsTracker, e := metrics.MakeMetricsTrackerGui(
+			metricsTracker, e = metrics.MakeMetricsTrackerGui(
 				userID,
 				amplitudeAPIKey,
 				httpClient,
@@ -619,12 +620,24 @@ func openBrowser(url string, openBrowserWg *sync.WaitGroup) {
 	}
 }
 
+func ptrStr(s string) *string {
+	return &s
+}
+
+func ptrBool(b bool) *bool {
+	return &b
+}
+
+func ptrInt(i int) *int {
+	return &i
+}
+
 func openElectron(trayIconPath *kelpos.OSPath, url string) {
 	log.Printf("opening URL in electron: %s", url)
 	quitMenuItemOption := &astilectron.MenuItemOptions{
-		Label:   astilectron.PtrStr("Quit"),
-		Visible: astilectron.PtrBool(true),
-		Enabled: astilectron.PtrBool(true),
+		Label:   ptrStr("Quit"),
+		Visible: ptrBool(true),
+		Enabled: ptrBool(true),
 		OnClick: astilectron.Listener(func(e astilectron.Event) (deleteListener bool) {
 			quit()
 			return false
@@ -632,17 +645,17 @@ func openElectron(trayIconPath *kelpos.OSPath, url string) {
 	}
 	mainMenuItemOptions := []*astilectron.MenuItemOptions{
 		&astilectron.MenuItemOptions{
-			Label: astilectron.PtrStr("File"),
+			Label: ptrStr("File"),
 			SubMenu: []*astilectron.MenuItemOptions{
 				&astilectron.MenuItemOptions{
-					Label: astilectron.PtrStr("Reload"),
+					Label: ptrStr("Reload"),
 					Role:  astilectron.MenuItemRoleReload,
 				},
 				quitMenuItemOption,
 			},
 		},
 		&astilectron.MenuItemOptions{
-			Label: astilectron.PtrStr("Edit"),
+			Label: ptrStr("Edit"),
 			Role:  astilectron.MenuItemRoleEditMenu,
 		},
 	}
@@ -657,14 +670,14 @@ func openElectron(trayIconPath *kelpos.OSPath, url string) {
 		Windows: []*bootstrap.Window{&bootstrap.Window{
 			Homepage: url,
 			Options: &astilectron.WindowOptions{
-				Center:   astilectron.PtrBool(true),
-				Width:    astilectron.PtrInt(1280),
-				Height:   astilectron.PtrInt(960),
-				Closable: astilectron.PtrBool(false),
+				Center:   ptrBool(true),
+				Width:    ptrInt(1280),
+				Height:   ptrInt(960),
+				Closable: ptrBool(false),
 			},
 		}},
 		TrayOptions: &astilectron.TrayOptions{
-			Image: astilectron.PtrStr(trayIconPath.Native()),
+			Image: ptrStr(trayIconPath.Native()),
 		},
 		TrayMenuOptions: []*astilectron.MenuItemOptions{
 			quitMenuItemOption,
