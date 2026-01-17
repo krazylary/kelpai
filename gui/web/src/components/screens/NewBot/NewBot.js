@@ -4,7 +4,11 @@ import getBotConfig from '../../../kelp-ops-api/getBotConfig';
 import getNewBotConfig from '../../../kelp-ops-api/getNewBotConfig';
 import upsertBotConfig from '../../../kelp-ops-api/upsertBotConfig';
 import fetchOptionsMetadata from '../../../kelp-ops-api/fetchOptionsMetadata';
+import fetchBotMetrics from '../../../kelp-ops-api/fetchBotMetrics';
+import fetchPrice from '../../../kelp-ops-api/fetchPrice';
 import LoadingAnimation from '../../atoms/LoadingAnimation/LoadingAnimation';
+import SideBar from '../../molecules/SideBar/SideBar';
+import grid from '../../_styles/grid.module.scss';
 
 class NewBot extends Component {
   constructor(props) {
@@ -14,6 +18,12 @@ class NewBot extends Component {
       configData: null,
       errorResp: null,
       optionsMetadata: null,
+      botMetrics: {
+        trade_count_buy: 0,
+        trade_count_sell: 0,
+      },
+      xlmPrice: null,
+      xrpPrice: null,
     };
 
     this.saveNew = this.saveNew.bind(this);
@@ -23,8 +33,12 @@ class NewBot extends Component {
     this.onChangeForm = this.onChangeForm.bind(this);
     this.updateUsingDotNotation = this.updateUsingDotNotation.bind(this);
     this.loadOptionsMetadata = this.loadOptionsMetadata.bind(this);
+    this.startMetricsPolling = this.startMetricsPolling.bind(this);
+    this.fetchMetrics = this.fetchMetrics.bind(this);
+    this.fetchCryptoPrices = this.fetchCryptoPrices.bind(this);
 
     this._asyncRequests = {};
+    this.metricsInterval = null;
   }
 
   componentDidMount() {
@@ -35,6 +49,49 @@ class NewBot extends Component {
     if (this._asyncRequests["botConfig"]) {
       delete this._asyncRequests["botConfig"];
     }
+    if (this.metricsInterval) {
+      clearInterval(this.metricsInterval);
+    }
+  }
+
+  startMetricsPolling(botName) {
+    this.fetchMetrics(botName);
+    this.fetchCryptoPrices();
+    this.metricsInterval = setInterval(() => {
+      this.fetchMetrics(botName);
+      this.fetchCryptoPrices();
+    }, 5000);
+  }
+
+  fetchCryptoPrices() {
+    var _this = this;
+    // XLM/USD
+    fetchPrice(this.props.baseUrl, "exchange", "kraken/XXLM/ZUSD/mid").then(resp => {
+        if (!resp.error) {
+            _this.setState({ xlmPrice: resp.price });
+        }
+    });
+    // XRP/USD
+    fetchPrice(this.props.baseUrl, "exchange", "kraken/XXRP/ZUSD/mid").then(resp => {
+        if (!resp.error) {
+            _this.setState({ xrpPrice: resp.price });
+        }
+    });
+  }
+
+  fetchMetrics(botName) {
+    var _this = this;
+    // Don't track this request in _asyncRequests to avoid blocking unmount logic excessively for background polling
+    fetchBotMetrics(this.props.baseUrl, botName).then(resp => {
+      if (!resp.error) {
+        _this.setState({
+          botMetrics: {
+            trade_count_buy: resp.trade_count_buy || 0,
+            trade_count_sell: resp.trade_count_sell || 0,
+          },
+        });
+      }
+    });
   }
 
   loadOptionsMetadata() {
@@ -222,24 +279,54 @@ class NewBot extends Component {
     }
 
     const isDetails = this.props.location.pathname === "/details";
+
+    if (isDetails && !this.metricsInterval) {
+        this.startMetricsPolling(botName);
+    }
+
     let formTitle = "Edit Bot";
     if (isDetails) {
       formTitle = "Bot Details";
     }
-    return (<Form 
-      router={this.props.history}
-      isNew={false}
-      baseUrl={this.props.baseUrl}
-      title={formTitle}
-      segmentNetworkOptions={segmentNetworkOptions}
-      optionsMetadata={this.state.optionsMetadata}
-      onChange={this.onChangeForm}
-      configData={this.state.configData}
-      saveFn={this.saveEdit}
-      saveText="Save Bot Updates"
-      errorResp={this.state.errorResp}
-      readOnly={isDetails}
-      />);
+
+    const formComponent = (
+        <Form
+        router={this.props.history}
+        isNew={false}
+        baseUrl={this.props.baseUrl}
+        title={formTitle}
+        segmentNetworkOptions={segmentNetworkOptions}
+        optionsMetadata={this.state.optionsMetadata}
+        onChange={this.onChangeForm}
+        configData={this.state.configData}
+        saveFn={this.saveEdit}
+        saveText="Save Bot Updates"
+        errorResp={this.state.errorResp}
+        readOnly={isDetails}
+        />
+    );
+
+    if (isDetails) {
+        return (
+            <div className={grid.container}>
+                <div style={{ display: 'flex' }}>
+                    <div style={{ flexGrow: 1 }}>
+                        {formComponent}
+                    </div>
+                    <div>
+                        <SideBar
+                            buyCount={this.state.botMetrics.trade_count_buy}
+                            sellCount={this.state.botMetrics.trade_count_sell}
+                            xlmPrice={this.state.xlmPrice}
+                            xrpPrice={this.state.xrpPrice}
+                        />
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    return formComponent;
   }
 }
 
