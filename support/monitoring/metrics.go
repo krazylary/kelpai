@@ -4,5 +4,6 @@ package monitoring
 // and it can dump the metrics as JSON.
 type Metrics interface {
 	UpdateMetrics(metrics map[string]interface{})
+	RegisterMetricsProvider(provider func() map[string]interface{})
 	MarshalJSON() ([]byte, error)
 }

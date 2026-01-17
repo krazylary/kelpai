@@ -655,7 +655,7 @@ func runTradeCmd(options inputs) {
 		db,
 		metricsTracker,
 	)
-	fillTracker := makeFillTracker(
+	fillTracker, fillStatsRecorder := makeFillTracker(
 		l,
 		strategy,
 		botConfig,
@@ -689,7 +689,7 @@ func runTradeCmd(options inputs) {
 	validateTrustlines(l, client, &botConfig)
 	if botConfig.MonitoringPort != 0 {
 		go func() {
-			e := startMonitoringServer(l, botConfig)
+			e := startMonitoringServer(l, botConfig, fillStatsRecorder)
 			if e != nil {
 				l.Info("")
 				l.Info("unable to start the monitoring server or problem encountered while running server:")
@@ -719,7 +719,7 @@ func runTradeCmd(options inputs) {
 	bot.Start()
 }
 
-func startMonitoringServer(l logger.Logger, botConfig trader.BotConfig) error {
+func startMonitoringServer(l logger.Logger, botConfig trader.BotConfig, fillStatsRecorder *plugins.FillStatsRecorder) error {
 	healthMetrics, e := monitoring.MakeMetricsRecorder(map[string]interface{}{"success": true})
 	if e != nil {
 		return fmt.Errorf("unable to make metrics recorder for the /health endpoint: %s", e)
@@ -733,6 +733,10 @@ func startMonitoringServer(l logger.Logger, botConfig trader.BotConfig) error {
 	if e != nil {
 		return fmt.Errorf("unable to make metrics recorder for the /metrics endpoint: %s", e)
 	}
+	if fillStatsRecorder != nil {
+		kelpMetrics.RegisterMetricsProvider(fillStatsRecorder.GetStats)
+	}
+
 	metricsAuth := networking.NoAuth
 	if botConfig.GoogleClientID != "" || botConfig.GoogleClientSecret != "" {
 		metricsAuth = networking.GoogleAuth
@@ -772,7 +776,7 @@ func makeFillTracker(
 	threadTracker *multithreading.ThreadTracker,
 	accountID string,
 	metricsTracker *metrics.MetricsTracker,
-) api.FillTracker {
+) (api.FillTracker, *plugins.FillStatsRecorder) {
 	strategyFillHandlers, e := strategy.GetFillHandlers()
 	if e != nil {
 		l.Info("")
@@ -788,7 +792,7 @@ func makeFillTracker(
 		// we want to delete all the offers and exit here because we don't want the bot to run if fill tracking isn't working
 		deleteAllOffersAndExit(l, botConfig, client, sdex, exchangeShim, threadTracker, metricsTracker)
 	} else if !fillTrackerEnabled {
-		return nil
+		return nil, nil
 	}
 
 	// start initializing the fill tracker
@@ -812,6 +816,9 @@ func makeFillTracker(
 	fillTracker := plugins.MakeFillTracker(tradingPair, threadTracker, exchangeShim, botConfig.FillTrackerSleepMillis, botConfig.FillTrackerDeleteCyclesThreshold, lastCursor)
 	fillLogger := plugins.MakeFillLogger()
 	fillTracker.RegisterHandler(fillLogger)
+	fillStatsRecorder := plugins.MakeFillStatsRecorder()
+	fillTracker.RegisterHandler(fillStatsRecorder)
+
 	if db != nil {
 		fillDBWriter := plugins.MakeFillDBWriter(db, assetDisplayFn, botConfig.TradingExchangeName(), accountID)
 		fillTracker.RegisterHandler(fillDBWriter)
@@ -822,7 +829,7 @@ func makeFillTracker(
 		}
 	}
 
-	return fillTracker
+	return fillTracker, fillStatsRecorder
 }
 
 func validateTrustlines(l logger.Logger, client *horizonclient.Client, botConfig *trader.BotConfig) {
